@@ -1,20 +1,20 @@
 const CLASS_INFO = {
-  "a primarily analog or mechanical device operated by direct physical mechanisms, analog gauges, springs, gears, valves, or continuous controls": {
+  analog_mechanical: {
     name: "Analog / Mechanical",
     descriptor: "Visible cues most closely match direct mechanical action or continuous analog operation.",
     explanation: "The image is visually closer to devices characterized by mechanical movement, direct physical controls, analog gauges, or continuous mechanisms. A rear, label, or interior view may still reveal electronic control that is not visible here.",
   },
-  "a digital or electronic device whose main operation uses digital logic, electronic controls, a digital display, or digital media": {
+  digital_electronic: {
     name: "Digital / Electronic",
     descriptor: "Visible cues most closely match electronic control, digital media, or digital interfaces.",
     explanation: "The image is visually closer to devices that use digital logic, electronic controls, digital displays, or digital media. This does not prove the exact circuitry or rule out analog components.",
   },
-  "a software-controlled smart device with firmware, programmable menus, networking, applications, or embedded computing": {
+  software_controlled: {
     name: "Software Controlled",
     descriptor: "Visible cues most closely match programmable, connected, or embedded-computing behavior.",
     explanation: "The image is visually closer to devices associated with firmware, programmable menus, networking, application control, or embedded computing. Software cannot be directly observed from an exterior image, so this remains an inference.",
   },
-  "a hybrid device combining substantial mechanical or analog functions with digital electronics or software control": {
+  hybrid: {
     name: "Hybrid",
     descriptor: "The image appears to combine meaningful mechanical or analog features with electronic or software control.",
     explanation: "The visible design appears to mix physical or analog mechanisms with digital electronics or software-oriented controls. Hybrid is often the most honest category for modern appliances and audio equipment.",
@@ -22,8 +22,8 @@ const CLASS_INFO = {
 };
 
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
-const UNCERTAINTY_TOP_SCORE = 0.39;
-const UNCERTAINTY_MARGIN = 0.075;
+const UNCERTAINTY_TOP_SCORE = 0.34;
+const UNCERTAINTY_MARGIN = 0.055;
 
 const imageInput = document.getElementById("imageInput");
 const dropZone = document.getElementById("dropZone");
@@ -44,6 +44,7 @@ const resultDescriptor = document.getElementById("resultDescriptor");
 const resultScore = document.getElementById("resultScore");
 const scoreList = document.getElementById("scoreList");
 const resultExplanation = document.getElementById("resultExplanation");
+const resultModelLabel = document.getElementById("resultModelLabel");
 
 let selectedDataUrl = null;
 let worker = null;
@@ -55,6 +56,7 @@ function ensureWorker() {
   worker = new Worker(new URL("./model-worker.js", import.meta.url), { type: "module" });
   worker.addEventListener("message", handleWorkerMessage);
   worker.addEventListener("error", (event) => {
+    finishRunning();
     showError(event.message || "The browser could not start the model worker.");
   });
   return worker;
@@ -169,7 +171,9 @@ function analyzeImage() {
   ensureWorker().postMessage({ type: "analyze", image: selectedDataUrl });
 }
 
-function renderResult(rawResults) {
+function renderResult(payload) {
+  const rawResults = Array.isArray(payload) ? payload : payload?.results;
+  const model = Array.isArray(payload) ? null : payload?.model;
   const results = Array.isArray(rawResults)
     ? rawResults
         .filter((item) => item && CLASS_INFO[item.label] && Number.isFinite(Number(item.score)))
@@ -188,11 +192,17 @@ function renderResult(rawResults) {
   const uncertain = top.score < UNCERTAINTY_TOP_SCORE || margin < UNCERTAINTY_MARGIN;
   const info = CLASS_INFO[top.label];
 
+  if (resultModelLabel) {
+    resultModelLabel.textContent = model?.version
+      ? `Model result · ${model.version}`
+      : "Model result";
+  }
+
   if (uncertain) {
     resultClass.textContent = "Indeterminate";
     resultDescriptor.textContent = "The baseline did not find a sufficiently clear separation between the leading visual interpretations.";
     resultScore.textContent = `${Math.round(top.score * 100)}%`;
-    resultExplanation.textContent = `The strongest visual match was ${info.name.toLowerCase()}, but the evidence was not distinct enough for this baseline to present that interpretation as its final class. Try a closer image of the controls, display, rear ports, rating label, or operating interface.`;
+    resultExplanation.textContent = `The strongest visual match was ${info.name.toLowerCase()}, but the score and separation were not strong enough for this research baseline to present it as the final class. Try a closer image of the controls, display, rear ports, rating label, or operating interface.`;
   } else {
     resultClass.textContent = info.name;
     resultDescriptor.textContent = info.descriptor;
@@ -233,7 +243,9 @@ function showError(message) {
   resultEmpty.hidden = true;
   resultContent.hidden = true;
   resultError.hidden = false;
-  errorMessage.textContent = message;
+  errorMessage.textContent = message.includes("fetch")
+    ? "The browser could not download the model. Check the connection, disable strict content blockers for this page, and try again."
+    : message;
 }
 
 function resetResult() {
