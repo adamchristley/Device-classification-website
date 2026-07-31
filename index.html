@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#f4f1ea" />
+  <meta name="description" content="An interactive research prototype for estimating whether a photographed device is analog, digital, software-controlled, hybrid, or indeterminate." />
+  <meta property="og:title" content="Device Architecture AI" />
+  <meta property="og:description" content="A computer vision research prototype inspired by a conversation about analog and digital devices." />
+  <meta property="og:type" content="website" />
+  <title>Device Architecture AI | Research Prototype</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Device Architecture AI home">
+      <span class="brand-mark" aria-hidden="true">DA</span>
+      <span>Device Architecture AI</span>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#prototype">Try the model</a>
+      <a href="#method">Method</a>
+      <a href="#status">Research status</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">Independent computer vision research prototype</p>
+        <h1>Can a photograph reveal how a device works?</h1>
+        <p class="hero-text">
+          This project explores whether an image model can estimate whether a physical device is primarily analog or mechanical, digital or electronic, software-controlled, hybrid, or impossible to determine from the available view.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#prototype">Test the baseline</a>
+          <a class="button secondary" href="#method">Read the approach</a>
+        </div>
+        <p class="origin-note">
+          The project began with a conversation about a large stereo CD player, an object that combines physical controls, moving parts, digital media, and electronic processing.
+        </p>
+      </div>
+
+      <aside class="research-card" aria-label="Research question">
+        <p class="card-label">Research question</p>
+        <blockquote>
+          Can a visual model learn architecture-related cues that transfer to device models and categories it has never seen before?
+        </blockquote>
+        <div class="status-line">
+          <span class="status-dot"></span>
+          <span>Baseline prototype available</span>
+        </div>
+      </aside>
+    </section>
+
+    <section class="classification-strip" aria-label="Classification labels">
+      <div class="shell class-grid">
+        <div><span>01</span><strong>Analog / Mechanical</strong></div>
+        <div><span>02</span><strong>Digital / Electronic</strong></div>
+        <div><span>03</span><strong>Software Controlled</strong></div>
+        <div><span>04</span><strong>Hybrid</strong></div>
+        <div><span>05</span><strong>Indeterminate</strong></div>
+      </div>
+    </section>
+
+    <section id="prototype" class="prototype-section shell">
+      <div class="section-heading">
+        <p class="eyebrow">Interactive baseline</p>
+        <h2>Upload one clearly framed device</h2>
+        <p>
+          The first model is a zero-shot visual-language baseline. It runs locally in your browser and compares the image with descriptive class prompts. The first analysis can take a minute while the model downloads and is cached.
+        </p>
+      </div>
+
+      <div class="prototype-grid">
+        <div class="upload-panel">
+          <label id="dropZone" class="drop-zone" for="imageInput">
+            <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
+            <div id="emptyUpload" class="drop-content">
+              <span class="upload-icon" aria-hidden="true">↑</span>
+              <strong>Choose a device image</strong>
+              <span>JPEG, PNG, or WebP, up to 12 MB</span>
+            </div>
+            <img id="previewImage" alt="Selected device preview" hidden />
+          </label>
+
+          <div class="upload-actions">
+            <button id="analyzeButton" class="button primary" type="button" disabled>Analyze image</button>
+            <button id="clearButton" class="button text-button" type="button" disabled>Clear</button>
+          </div>
+
+          <div id="progressWrap" class="progress-wrap" hidden aria-live="polite">
+            <div class="progress-header">
+              <span id="progressText">Preparing model...</span>
+              <span id="progressPercent"></span>
+            </div>
+            <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
+          </div>
+
+          <p class="privacy-note">
+            Images are processed in this browser and are not uploaded to a project server by this version of the prototype.
+          </p>
+        </div>
+
+        <div id="resultPanel" class="result-panel" aria-live="polite">
+          <div id="resultEmpty" class="result-empty">
+            <span class="result-symbol" aria-hidden="true">◎</span>
+            <h3>Results will appear here</h3>
+            <p>The model will show a leading class, relative similarity scores, and a clear limitation statement.</p>
+          </div>
+
+          <div id="resultContent" hidden>
+            <p class="card-label">Baseline assessment</p>
+            <div class="result-title-row">
+              <div>
+                <h3 id="resultClass">Indeterminate</h3>
+                <p id="resultDescriptor"></p>
+              </div>
+              <div class="score-badge">
+                <strong id="resultScore">0%</strong>
+                <span>relative score</span>
+              </div>
+            </div>
+
+            <div id="scoreList" class="score-list"></div>
+
+            <div class="interpretation-box">
+              <h4>How to interpret this result</h4>
+              <p id="resultExplanation"></p>
+            </div>
+
+            <div class="limitation-box">
+              <h4>Important limitation</h4>
+              <p>
+                This baseline compares overall visual similarity. It does not inspect hidden circuitry, verify a processor, or prove the device's internal architecture. The displayed scores are not calibrated probabilities.
+              </p>
+            </div>
+          </div>
+
+          <div id="resultError" class="error-box" hidden>
+            <h3>The model could not complete the analysis</h3>
+            <p id="errorMessage">Please try another image or browser.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="method" class="method-section">
+      <div class="shell">
+        <div class="section-heading narrow">
+          <p class="eyebrow">Research method</p>
+          <h2>Evidence before conclusion</h2>
+          <p>
+            The goal is not to force every object into a binary answer. The project is designed to measure what can be inferred from visible evidence, identify shortcuts, and return uncertainty when the photograph does not support a reliable conclusion.
+          </p>
+        </div>
+
+        <div class="method-grid">
+          <article>
+            <span class="method-number">01</span>
+            <h3>Define the labels</h3>
+            <p>Use consistent definitions for analog, digital, software-controlled, hybrid, and indeterminate devices.</p>
+          </article>
+          <article>
+            <span class="method-number">02</span>
+            <h3>Build the dataset</h3>
+            <p>Collect several views of verified devices, record source and model information, and include difficult counterexamples.</p>
+          </article>
+          <article>
+            <span class="method-number">03</span>
+            <h3>Prevent leakage</h3>
+            <p>Keep every image of the same physical device or product model inside a single train, validation, or test split.</p>
+          </article>
+          <article>
+            <span class="method-number">04</span>
+            <h3>Test generalization</h3>
+            <p>Evaluate unseen models, held-out device families, unusual angles, blur, glare, clutter, and ambiguous hybrid examples.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="status" class="status-section shell">
+      <div class="section-heading">
+        <p class="eyebrow">Living research record</p>
+        <h2>Current project status</h2>
+      </div>
+
+      <div class="status-grid">
+        <article class="status-card complete">
+          <span>Available now</span>
+          <h3>Zero-shot baseline</h3>
+          <p>A browser-based CLIP model compares one image against the four substantive architecture classes and applies a transparent uncertainty rule.</p>
+        </article>
+        <article class="status-card active">
+          <span>In progress</span>
+          <h3>Verified benchmark</h3>
+          <p>A small initial image set will be labeled by device identity and architecture, with model-level test separation.</p>
+        </article>
+        <article class="status-card planned">
+          <span>Planned</span>
+          <h3>Measured results</h3>
+          <p>Confusion matrices, per-class precision and recall, calibration analysis, examples, and failure cases will be published here.</p>
+        </article>
+      </div>
+
+      <div class="research-note">
+        <div>
+          <p class="card-label">Why an “indeterminate” result matters</p>
+          <h3>Missing evidence is not a modeling failure.</h3>
+        </div>
+        <p>
+          An exterior image may not reveal firmware, internal signal paths, microcontrollers, or analog circuitry. A useful model must be allowed to say that another view, a model number, or documentation is required.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="shell footer-inner">
+      <div>
+        <strong>Visual Classification of Device Architecture from Images</strong>
+        <p>An independent research prototype by Adam J. Christley.</p>
+      </div>
+      <p>Prototype results are experimental and should not be used for repair, safety, or engineering decisions.</p>
+    </div>
+  </footer>
+</body>
+</html>
