@@ -44,8 +44,8 @@ jobs:
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
-          status=$(curl --location --silent --output /tmp/site.html --write-out "%{http_code}" "$PAGE_URL")
-          title=$(grep -o '<title>[^<]*' /tmp/site.html | head -1 | sed 's/<title>//' || true)
+          export HTTP_STATUS=$(curl --location --silent --output /tmp/site.html --write-out "%{http_code}" "$PAGE_URL")
+          export PAGE_TITLE=$(grep -o '<title>[^<]*' /tmp/site.html | head -1 | sed 's/<title>//' || true)
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -56,7 +56,6 @@ jobs:
               "verified": os.environ["HTTP_STATUS"] == "200",
           }, indent=2) + "\n")
           PY
-        shell: bash
 
       - name: Commit deployment record
         run: |
