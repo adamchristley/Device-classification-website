@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths-ignore:
       - deployment-status.json
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -40,12 +42,15 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-      - name: Verify and record public URL
+      - name: Verify public URL
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           export HTTP_STATUS=$(curl --location --silent --output /tmp/site.html --write-out "%{http_code}" "$PAGE_URL")
           export PAGE_TITLE=$(grep -o '<title>[^<]*' /tmp/site.html | head -1 | sed 's/<title>//' || true)
+          echo "Published URL: $PAGE_URL"
+          echo "HTTP status: $HTTP_STATUS"
+          echo "Page title: $PAGE_TITLE"
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -58,6 +63,7 @@ jobs:
           PY
 
       - name: Commit deployment record
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
