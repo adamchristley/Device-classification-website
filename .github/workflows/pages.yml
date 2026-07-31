@@ -3,10 +3,12 @@ name: Deploy website to GitHub Pages
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - deployment-status.json
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -26,12 +28,40 @@ jobs:
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload website artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: .
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Verify and record public URL
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          status=$(curl --location --silent --output /tmp/site.html --write-out "%{http_code}" "$PAGE_URL")
+          title=$(grep -o '<title>[^<]*' /tmp/site.html | head -1 | sed 's/<title>//' || true)
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("deployment-status.json").write_text(json.dumps({
+              "url": os.environ["PAGE_URL"],
+              "http_status": int(os.environ["HTTP_STATUS"]),
+              "title": os.environ.get("PAGE_TITLE", ""),
+              "verified": os.environ["HTTP_STATUS"] == "200",
+          }, indent=2) + "\n")
+          PY
+        shell: bash
+
+      - name: Commit deployment record
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployment-status.json
+          git commit -m "Record deployed website URL [skip ci]" || exit 0
+          git push
