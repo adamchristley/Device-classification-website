@@ -1,0 +1,13 @@
+{
+  "name": "device-architecture-training",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "collect": "node collect-dataset.mjs",
+    "train": "node train-model.mjs",
+    "all": "npm run collect && npm run train"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1"
+  }
+}

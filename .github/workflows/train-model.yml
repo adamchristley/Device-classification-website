@@ -1,0 +1,75 @@
+name: Train and evaluate device classifier
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "training/**"
+      - "data/dataset_config.json"
+      - ".github/workflows/train-model.yml"
+      - "model-worker.js"
+  push:
+    branches: [main]
+    paths:
+      - "training/**"
+      - "data/dataset_config.json"
+      - ".github/workflows/train-model.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: device-classifier-training
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: training
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install pinned dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Collect licensed public pilot data
+        run: npm run collect
+
+      - name: Train and evaluate classifier
+        run: npm run train
+
+      - name: Validate exported artifacts
+        run: |
+          node -e 'const fs=require("fs"); const m=JSON.parse(fs.readFileSync("../models/classifier.json")); if(m.weights.length!==4 || m.embedding_dimensions!==512) process.exit(1); console.log(m.model_version, m.metrics);'
+
+      - name: Upload reproducibility artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-classifier-artifacts
+          path: |
+            data/manifest.csv
+            models/classifier.json
+            results/metrics.json
+            results/predictions.csv
+            results/confusion-matrix.svg
+            results/MODEL_CARD.md
+          retention-days: 30
+
+      - name: Commit trained model and results
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/manifest.csv models/classifier.json results/
+          git commit -m "Train public-data device classifier [skip ci]" || exit 0
+          git push
