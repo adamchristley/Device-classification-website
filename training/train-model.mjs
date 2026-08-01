@@ -29,7 +29,8 @@ const USER_AGENT = 'DeviceArchitectureResearch/0.1 (https://github.com/adamchris
 const SEED = 20260731;
 
 env.allowLocalModels = false;
-env.useBrowserCache = true;
+env.useBrowserCache = false;
+env.useFSCache = true;
 env.cacheDir = path.join(ROOT, 'training', '.cache', 'models');
 
 function parseCsv(text) {
