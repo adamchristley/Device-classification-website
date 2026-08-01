@@ -9,32 +9,32 @@
       {"family": "mechanical_typewriter", "split": "train", "query": "mechanical typewriter"},
       {"family": "gramophone", "split": "train", "query": "gramophone phonograph"},
       {"family": "film_camera", "split": "train", "query": "35mm film camera"},
-      {"family": "manual_sewing_machine", "split": "validation", "query": "manual mechanical sewing machine"},
-      {"family": "mechanical_calculator", "split": "test", "query": "mechanical calculator adding machine"}
+      {"family": "manual_sewing_machine", "split": "validation", "query": "antique sewing machine"},
+      {"family": "mechanical_calculator", "split": "test", "query": "mechanical calculator"}
     ],
     "digital_electronic": [
-      {"family": "pocket_calculator", "split": "train", "query": "electronic pocket calculator"},
+      {"family": "pocket_calculator", "split": "train", "query": "pocket calculator"},
       {"family": "digital_clock", "split": "train", "query": "digital alarm clock"},
       {"family": "digital_camera", "split": "train", "query": "compact digital camera"},
       {"family": "remote_control", "split": "train", "query": "electronic remote control"},
-      {"family": "digital_thermometer", "split": "validation", "query": "digital thermometer device"},
-      {"family": "portable_cd_player", "split": "test", "query": "portable CD player discman"}
+      {"family": "digital_thermometer", "split": "validation", "query": "digital thermometer"},
+      {"family": "portable_cd_player", "split": "test", "query": "portable CD player"}
     ],
     "software_controlled": [
       {"family": "smartphone", "split": "train", "query": "smartphone touchscreen"},
       {"family": "tablet", "split": "train", "query": "tablet computer touchscreen"},
       {"family": "laptop", "split": "train", "query": "laptop computer open"},
-      {"family": "smartwatch", "split": "train", "query": "smartwatch display"},
-      {"family": "smart_speaker", "split": "validation", "query": "smart speaker device"},
-      {"family": "wifi_router", "split": "test", "query": "wireless router device"}
+      {"family": "smartwatch", "split": "train", "query": "smartwatch"},
+      {"family": "smart_speaker", "split": "validation", "query": "smart speaker"},
+      {"family": "wifi_router", "split": "test", "query": "wireless router"}
     ],
     "hybrid": [
-      {"family": "washing_machine", "split": "train", "query": "modern washing machine control panel"},
-      {"family": "microwave_oven", "split": "train", "query": "microwave oven control panel"},
-      {"family": "multifunction_printer", "split": "train", "query": "multifunction printer control panel"},
-      {"family": "stereo_system", "split": "train", "query": "stereo system CD player controls"},
-      {"family": "car_dashboard", "split": "validation", "query": "modern automobile dashboard controls"},
-      {"family": "computerized_sewing_machine", "split": "test", "query": "computerized electronic sewing machine display"}
+      {"family": "washing_machine", "split": "train", "query": "washing machine control panel"},
+      {"family": "microwave_oven", "split": "train", "query": "microwave oven"},
+      {"family": "multifunction_printer", "split": "train", "query": "multifunction printer"},
+      {"family": "stereo_system", "split": "train", "query": "stereo CD player"},
+      {"family": "car_dashboard", "split": "validation", "query": "car dashboard"},
+      {"family": "computerized_sewing_machine", "split": "test", "query": "electronic sewing machine"}
     ]
   }
 }
