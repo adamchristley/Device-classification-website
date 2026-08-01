@@ -1,0 +1,127 @@
+{
+  "model_version": "clip-linear-wikimedia-v0.1-2026-08-01",
+  "generated_at": "2026-08-01T01:33:12.810Z",
+  "base_model": "Xenova/clip-vit-base-patch32",
+  "dataset_version": "wikimedia-pilot-v0.1",
+  "counts": {
+    "total": 189,
+    "train": 127,
+    "validation": 32,
+    "test": 30
+  },
+  "validation": {
+    "standard": {
+      "accuracy": 0.6875,
+      "macro_f1": 0.6555555555555554,
+      "per_class": {
+        "analog_mechanical": {
+          "precision": 0.8,
+          "recall": 1,
+          "f1": 0.888888888888889,
+          "support": 8
+        },
+        "digital_electronic": {
+          "precision": 0.6,
+          "recall": 0.75,
+          "f1": 0.6666666666666665,
+          "support": 8
+        },
+        "software_controlled": {
+          "precision": 0.6,
+          "recall": 0.75,
+          "f1": 0.6666666666666665,
+          "support": 8
+        },
+        "hybrid": {
+          "precision": 1,
+          "recall": 0.25,
+          "f1": 0.4,
+          "support": 8
+        }
+      }
+    },
+    "selective": {
+      "coverage": 0.625,
+      "answered": 20,
+      "total": 32,
+      "selective_accuracy": 0.85
+    }
+  },
+  "test": {
+    "standard": {
+      "accuracy": 0.26666666666666666,
+      "macro_f1": 0.2785714285714286,
+      "per_class": {
+        "analog_mechanical": {
+          "precision": 0.5714285714285714,
+          "recall": 0.5,
+          "f1": 0.5333333333333333,
+          "support": 8
+        },
+        "digital_electronic": {
+          "precision": 0.07692307692307693,
+          "recall": 0.125,
+          "f1": 0.09523809523809525,
+          "support": 8
+        },
+        "software_controlled": {
+          "precision": 0.5,
+          "recall": 0.125,
+          "f1": 0.2,
+          "support": 8
+        },
+        "hybrid": {
+          "precision": 0.25,
+          "recall": 0.3333333333333333,
+          "f1": 0.28571428571428575,
+          "support": 6
+        }
+      }
+    },
+    "selective": {
+      "coverage": 0.5,
+      "answered": 15,
+      "total": 30,
+      "selective_accuracy": 0.3333333333333333
+    },
+    "confusion_matrix": [
+      [
+        4,
+        4,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        1,
+        6
+      ],
+      [
+        0,
+        7,
+        1,
+        0
+      ],
+      [
+        3,
+        1,
+        0,
+        2
+      ]
+    ]
+  },
+  "thresholds": {
+    "min_probability": 0.25,
+    "min_margin": 0.225,
+    "coverage": 0.625,
+    "selective_accuracy": 0.85
+  },
+  "hyperparameters": {
+    "optimizer": "Adam",
+    "epochs": 420,
+    "learningRate": 0.018,
+    "l2": 0.003,
+    "seed": 20260731
+  }
+}
