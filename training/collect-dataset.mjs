@@ -7,6 +7,7 @@ const CONFIG_PATH = path.join(ROOT, 'data', 'dataset_config.json');
 const MANIFEST_PATH = path.join(ROOT, 'data', 'manifest.csv');
 const API = 'https://commons.wikimedia.org/w/api.php';
 const USER_AGENT = 'DeviceArchitectureResearch/0.1 (https://github.com/adamchristley/Device-classification-website)';
+const PHOTO_EXTENSION = /\.(?:jpe?g|png|webp)$/i;
 const BAD_TITLE_PARTS = [
   'logo', 'icon', 'diagram', 'schematic', 'symbol', 'map', 'patent', 'manual page',
   'screenshot', 'screen shot', 'drawing', 'illustration', 'advertisement', 'poster',
@@ -40,10 +41,12 @@ async function searchTitles(query, limit) {
     list: 'search',
     srsearch: query,
     srnamespace: '6',
-    srlimit: String(Math.min(50, Math.max(30, limit * 6))),
+    srlimit: String(Math.min(50, Math.max(40, limit * 7))),
     srprop: '',
   });
-  return (payload.query?.search ?? []).map((item) => item.title);
+  return (payload.query?.search ?? [])
+    .map((item) => item.title)
+    .filter((title) => PHOTO_EXTENSION.test(String(title)));
 }
 
 async function fetchImageInfo(titles, config) {
