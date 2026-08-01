@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import crypto from 'node:crypto';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const CONFIG_PATH = path.join(ROOT, 'data', 'dataset_config.json');
 const MANIFEST_PATH = path.join(ROOT, 'data', 'manifest.csv');
+const IMAGE_CACHE_DIR = path.join(ROOT, 'training', '.cache', 'images');
 const API = 'https://commons.wikimedia.org/w/api.php';
 const USER_AGENT = 'DeviceArchitectureResearch/0.1 (https://github.com/adamchristley/Device-classification-website)';
 const PHOTO_EXTENSION = /\.(?:jpe?g|png|webp)$/i;
@@ -13,6 +15,10 @@ const BAD_TITLE_PARTS = [
   'screenshot', 'screen shot', 'drawing', 'illustration', 'advertisement', 'poster',
   'packaging', 'box art', 'stamp', 'coin', 'banknote', 'museum label'
 ];
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 function csvEscape(value) {
   const text = value == null ? '' : String(value);
@@ -65,6 +71,7 @@ async function fetchImageInfo(titles, config) {
       iiextmetadatalanguage: 'en',
     });
     pages.push(...(payload.query?.pages ?? []));
+    await sleep(150);
   }
   return pages;
 }
@@ -86,9 +93,64 @@ async function commonsSearch(query, limit, config) {
   return pages.filter((page) => isUsable(page, config));
 }
 
+function cacheTarget(row) {
+  const extension = row.mime === 'image/png' ? '.png' : row.mime === 'image/webp' ? '.webp' : '.jpg';
+  const name = crypto.createHash('sha256').update(row.sha1 || row.image_url).digest('hex') + extension;
+  return path.join(IMAGE_CACHE_DIR, name);
+}
+
+async function downloadWithBackoff(row) {
+  await fs.mkdir(IMAGE_CACHE_DIR, { recursive: true });
+  const target = cacheTarget(row);
+  try {
+    await fs.access(target);
+    return true;
+  } catch {}
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const response = await fetch(row.image_url, {
+      headers: { 'User-Agent': USER_AGENT, Accept: row.mime },
+    });
+    if (response.ok) {
+      await fs.writeFile(target, Buffer.from(await response.arrayBuffer()));
+      return true;
+    }
+
+    if (![429, 500, 502, 503, 504].includes(response.status)) {
+      console.warn(`Permanent image error ${response.status}: ${row.source_url}`);
+      return false;
+    }
+
+    const retryAfter = Number(response.headers.get('retry-after'));
+    const delay = Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : Math.min(20_000, 1_500 * 2 ** attempt);
+    console.warn(`Image request ${response.status}; retrying in ${Math.round(delay / 1000)}s: ${row.file_title}`);
+    await sleep(delay);
+  }
+
+  console.warn(`Image could not be downloaded after retries: ${row.source_url}`);
+  return false;
+}
+
+function assertSplitCoverage(rows) {
+  const counts = new Map();
+  for (const row of rows) {
+    const key = `${row.split}:${row.label}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  for (const split of ['train', 'validation', 'test']) {
+    for (const label of ['analog_mechanical', 'digital_electronic', 'software_controlled', 'hybrid']) {
+      const minimum = split === 'train' ? 20 : 4;
+      const count = counts.get(`${split}:${label}`) ?? 0;
+      if (count < minimum) throw new Error(`Insufficient downloaded data for ${split}/${label}: ${count} < ${minimum}`);
+    }
+  }
+}
+
 async function main() {
   const config = JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
-  const rows = [];
+  const candidateRows = [];
   const usedSha1 = new Set();
 
   for (const [label, families] of Object.entries(config.classes)) {
@@ -100,7 +162,7 @@ async function main() {
         const info = page.imageinfo[0];
         if (usedSha1.has(info.sha1)) continue;
         usedSha1.add(info.sha1);
-        rows.push({
+        candidateRows.push({
           dataset_version: config.dataset_version,
           label,
           family: family.family,
@@ -131,7 +193,16 @@ async function main() {
     }
   }
 
-  if (!rows.length) throw new Error('No dataset rows were collected.');
+  console.log(`Downloading ${candidateRows.length} thumbnails with rate-limit backoff...`);
+  const rows = [];
+  for (let index = 0; index < candidateRows.length; index += 1) {
+    const row = candidateRows[index];
+    if (await downloadWithBackoff(row)) rows.push(row);
+    console.log(`[${index + 1}/${candidateRows.length}] ${row.family}/${row.file_title}`);
+    await sleep(700);
+  }
+
+  assertSplitCoverage(rows);
   const headers = Object.keys(rows[0]);
   const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => csvEscape(row[key])).join(','))].join('\n') + '\n';
   await fs.mkdir(path.dirname(MANIFEST_PATH), { recursive: true });
@@ -142,7 +213,7 @@ async function main() {
     acc[key] = (acc[key] ?? 0) + 1;
     return acc;
   }, {});
-  console.log(`Wrote ${rows.length} rows to ${path.relative(ROOT, MANIFEST_PATH)}`);
+  console.log(`Wrote ${rows.length} downloaded rows to ${path.relative(ROOT, MANIFEST_PATH)}`);
   console.table(summary);
 }
 
