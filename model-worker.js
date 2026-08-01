@@ -12,6 +12,8 @@ env.useBrowserCache = true;
 const BASE_MODEL_ID = "Xenova/clip-vit-base-patch32";
 const FALLBACK_VERSION = "zero-shot-ensemble-v0.2";
 const CLASSIFIER_URL = new URL("./models/classifier.json", self.location.href);
+const MIN_PROMOTION_ACCURACY = 0.55;
+const MIN_PROMOTION_MACRO_F1 = 0.50;
 
 const CLASS_PROMPTS = {
   analog_mechanical: [
@@ -52,6 +54,11 @@ let zeroShotPromise;
 
 function progressCallback(progress) {
   self.postMessage({ type: "progress", payload: progress });
+}
+
+function isPromotedArtifact(artifact) {
+  return Number(artifact?.metrics?.test_accuracy) >= MIN_PROMOTION_ACCURACY
+    && Number(artifact?.metrics?.test_macro_f1) >= MIN_PROMOTION_MACRO_F1;
 }
 
 async function loadClassifierArtifact() {
@@ -141,6 +148,7 @@ async function classifyWithTrainedHead(image, artifact) {
       metrics: artifact.metrics,
       dataset: artifact.dataset_version,
       warning: artifact.warning,
+      promoted: true,
     },
   };
 }
@@ -159,7 +167,7 @@ function aggregatePromptScores(rawOutput) {
     .sort((a, b) => b.score - a.score);
 }
 
-async function classifyWithZeroShot(image) {
+async function classifyWithZeroShot(image, candidateArtifact = null) {
   self.postMessage({ type: "status", payload: "Loading CLIP zero-shot baseline..." });
   const classifier = await getZeroShotClassifier();
   self.postMessage({ type: "status", payload: "Comparing architecture evidence..." });
@@ -173,8 +181,20 @@ async function classifyWithZeroShot(image) {
     model: {
       id: BASE_MODEL_ID,
       version: FALLBACK_VERSION,
-      method: "CLIP zero-shot prompt ensemble fallback",
+      method: "CLIP zero-shot prompt ensemble",
       promptsPerClass: 4,
+      promoted: false,
+      evaluatedCandidate: candidateArtifact
+        ? {
+            version: candidateArtifact.model_version,
+            metrics: candidateArtifact.metrics,
+            promotionRequirements: {
+              test_accuracy: MIN_PROMOTION_ACCURACY,
+              test_macro_f1: MIN_PROMOTION_MACRO_F1,
+            },
+            status: "not-promoted",
+          }
+        : null,
     },
   };
 }
@@ -185,9 +205,9 @@ self.addEventListener("message", async (event) => {
 
   try {
     const artifact = await loadClassifierArtifact();
-    const payload = artifact
+    const payload = artifact && isPromotedArtifact(artifact)
       ? await classifyWithTrainedHead(image, artifact)
-      : await classifyWithZeroShot(image);
+      : await classifyWithZeroShot(image, artifact);
     self.postMessage({ type: "result", payload });
   } catch (error) {
     self.postMessage({
