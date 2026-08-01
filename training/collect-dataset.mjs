@@ -22,34 +22,65 @@ function plain(metadata, key) {
   return metadata?.[key]?.value?.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim() ?? '';
 }
 
+async function apiRequest(params) {
+  const response = await fetch(`${API}?${new URLSearchParams(params)}`, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+  });
+  if (!response.ok) throw new Error(`Commons API returned ${response.status}`);
+  const payload = await response.json();
+  if (payload.error) throw new Error(`Commons API error ${payload.error.code}: ${payload.error.info}`);
+  return payload;
+}
+
+async function searchTitles(query, limit) {
+  const payload = await apiRequest({
+    action: 'query',
+    format: 'json',
+    formatversion: '2',
+    list: 'search',
+    srsearch: query,
+    srnamespace: '6',
+    srlimit: String(Math.min(50, Math.max(30, limit * 6))),
+    srprop: '',
+  });
+  return (payload.query?.search ?? []).map((item) => item.title);
+}
+
+async function fetchImageInfo(titles, config) {
+  const pages = [];
+  for (let start = 0; start < titles.length; start += 20) {
+    const batch = titles.slice(start, start + 20);
+    const payload = await apiRequest({
+      action: 'query',
+      format: 'json',
+      formatversion: '2',
+      titles: batch.join('|'),
+      prop: 'imageinfo',
+      iiprop: 'url|mime|size|sha1|extmetadata',
+      iiurlwidth: String(config.thumbnail_width),
+      iiextmetadatafilter: 'LicenseShortName|LicenseUrl|Artist|Credit',
+      iiextmetadatalanguage: 'en',
+    });
+    pages.push(...(payload.query?.pages ?? []));
+  }
+  return pages;
+}
+
 function isUsable(page, config) {
   const info = page.imageinfo?.[0];
-  if (!info || !info.thumburl || !info.descriptionurl || !info.sha1) return false;
+  if (!info || !info.url || !info.descriptionurl || !info.sha1) return false;
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(info.mime)) return false;
   if (Math.min(Number(info.width) || 0, Number(info.height) || 0) < config.minimum_dimension) return false;
   const title = String(page.title || '').toLowerCase();
   if (BAD_TITLE_PARTS.some((part) => title.includes(part))) return false;
-  const license = plain(info.extmetadata, 'LicenseShortName');
-  return Boolean(license);
+  return true;
 }
 
 async function commonsSearch(query, limit, config) {
-  const params = new URLSearchParams({
-    action: 'query',
-    format: 'json',
-    formatversion: '2',
-    generator: 'search',
-    gsrsearch: query,
-    gsrnamespace: '6',
-    gsrlimit: String(Math.max(30, limit * 6)),
-    prop: 'imageinfo',
-    iiprop: 'url|mime|size|sha1|extmetadata',
-    iiurlwidth: String(config.thumbnail_width),
-  });
-  const response = await fetch(`${API}?${params}`, { headers: { 'User-Agent': USER_AGENT } });
-  if (!response.ok) throw new Error(`Commons API returned ${response.status} for ${query}`);
-  const payload = await response.json();
-  return (payload.query?.pages ?? []).filter((page) => isUsable(page, config));
+  const titles = await searchTitles(query, limit);
+  if (!titles.length) return [];
+  const pages = await fetchImageInfo(titles, config);
+  return pages.filter((page) => isUsable(page, config));
 }
 
 async function main() {
@@ -74,13 +105,13 @@ async function main() {
           source: 'Wikimedia Commons',
           file_title: page.title,
           source_url: info.descriptionurl,
-          image_url: info.thumburl,
+          image_url: info.thumburl || info.url,
           original_url: info.url,
           sha1: info.sha1,
           mime: info.mime,
           width: info.width,
           height: info.height,
-          license: plain(info.extmetadata, 'LicenseShortName'),
+          license: plain(info.extmetadata, 'LicenseShortName') || 'See Commons source page',
           license_url: plain(info.extmetadata, 'LicenseUrl'),
           artist: plain(info.extmetadata, 'Artist'),
           credit: plain(info.extmetadata, 'Credit'),
@@ -90,13 +121,14 @@ async function main() {
         added += 1;
         if (added >= config.images_per_family) break;
       }
-      console.log(`${added} images`);
+      console.log(`${added} images from ${candidates.length} usable candidates`);
       if (added < Math.max(4, Math.floor(config.images_per_family / 2))) {
         throw new Error(`Too few usable images for ${label}/${family.family}: ${added}`);
       }
     }
   }
 
+  if (!rows.length) throw new Error('No dataset rows were collected.');
   const headers = Object.keys(rows[0]);
   const csv = [headers.join(','), ...rows.map((row) => headers.map((key) => csvEscape(row[key])).join(','))].join('\n') + '\n';
   await fs.mkdir(path.dirname(MANIFEST_PATH), { recursive: true });
