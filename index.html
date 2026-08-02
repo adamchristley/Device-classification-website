@@ -4,9 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#f4f1ea" />
-  <meta name="description" content="An interactive research prototype for estimating whether a photographed device is analog, digital, software-controlled, hybrid, or indeterminate." />
+  <meta name="description" content="A browser-based research prototype that measures independent mechanical, analog, digital, and software-control evidence in device photographs." />
   <meta property="og:title" content="Device Architecture AI" />
-  <meta property="og:description" content="A computer vision research prototype inspired by a conversation about analog and digital devices." />
+  <meta property="og:description" content="Independent architecture evidence from a device photograph, with a physical-device gate and an Indeterminate result." />
   <meta property="og:type" content="website" />
   <title>Device Architecture AI | Research Prototype</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
@@ -35,45 +35,45 @@
         <p class="eyebrow">Independent computer vision research prototype</p>
         <h1>Can a photograph reveal how a device works?</h1>
         <p class="hero-text">
-          This project explores whether an image model can estimate whether a physical device is primarily analog or mechanical, digital or electronic, software-controlled, hybrid, or impossible to determine from the available view.
+          This version no longer forces every image into four competing classes. It first checks whether a physical device is clearly present, then measures mechanical, analog, digital, and software-control evidence independently.
         </p>
         <div class="hero-actions">
-          <a class="button primary" href="#prototype">Test the baseline</a>
+          <a class="button primary" href="#prototype">Test the evidence model</a>
           <a class="button secondary" href="#method">Read the approach</a>
         </div>
         <p class="origin-note">
-          The project began with a conversation about a large stereo CD player, an object that combines physical controls, moving parts, digital media, and electronic processing.
+          The project began with a conversation about a stereo CD player, a useful example because meaningful moving parts, analog audio, digital media, and electronic control can coexist in one device.
         </p>
       </div>
 
       <aside class="research-card" aria-label="Research question">
         <p class="card-label">Research question</p>
         <blockquote>
-          Can a visual model learn architecture-related cues that transfer to device models and categories it has never seen before?
+          Can visible evidence support separate architecture attributes without inventing certainty or forcing irrelevant labels?
         </blockquote>
         <div class="status-line">
           <span class="status-dot"></span>
-          <span>Baseline prototype available</span>
+          <span>Independent-attribute baseline in validation</span>
         </div>
       </aside>
     </section>
 
-    <section class="classification-strip" aria-label="Classification labels">
+    <section class="classification-strip" aria-label="Evidence axes">
       <div class="shell class-grid">
-        <div><span>01</span><strong>Analog / Mechanical</strong></div>
-        <div><span>02</span><strong>Digital / Electronic</strong></div>
-        <div><span>03</span><strong>Software Controlled</strong></div>
-        <div><span>04</span><strong>Hybrid</strong></div>
-        <div><span>05</span><strong>Indeterminate</strong></div>
+        <div><span>01</span><strong>Device Gate</strong></div>
+        <div><span>02</span><strong>Mechanical Evidence</strong></div>
+        <div><span>03</span><strong>Analog Evidence</strong></div>
+        <div><span>04</span><strong>Digital Evidence</strong></div>
+        <div><span>05</span><strong>Software Control</strong></div>
       </div>
     </section>
 
     <section id="prototype" class="prototype-section shell">
       <div class="section-heading">
-        <p class="eyebrow">Interactive baseline</p>
-        <h2>Upload one clearly framed device</h2>
+        <p class="eyebrow">Interactive evidence baseline</p>
+        <h2>Upload one clearly framed object</h2>
         <p>
-          The first model is a zero-shot visual-language baseline. It runs locally in your browser and compares the image with descriptive class prompts. The first analysis can take a minute while the model downloads and is cached.
+          A quantized CLIP model runs locally in the browser. Each evidence axis compares positive descriptions with opposing descriptions, so the four architecture scores are independent and do not need to add to 100%.
         </p>
       </div>
 
@@ -83,10 +83,10 @@
             <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" />
             <div id="emptyUpload" class="drop-content">
               <span class="upload-icon" aria-hidden="true">↑</span>
-              <strong>Choose a device image</strong>
+              <strong>Choose an image</strong>
               <span>JPEG, PNG, or WebP, up to 12 MB</span>
             </div>
-            <img id="previewImage" alt="Selected device preview" hidden />
+            <img id="previewImage" alt="Selected image preview" hidden />
           </label>
 
           <div class="upload-actions">
@@ -103,27 +103,27 @@
           </div>
 
           <p class="privacy-note">
-            Images are processed in this browser and are not uploaded to a project server by this version of the prototype.
+            The image is processed in this browser and is not uploaded to a project inference server.
           </p>
         </div>
 
         <div id="resultPanel" class="result-panel" aria-live="polite">
           <div id="resultEmpty" class="result-empty">
             <span class="result-symbol" aria-hidden="true">◎</span>
-            <h3>Results will appear here</h3>
-            <p>The model will show a leading class, relative similarity scores, and a clear limitation statement.</p>
+            <h3>Evidence will appear here</h3>
+            <p>The model will show the device gate, four independent evidence axes, and a rule-derived label or Indeterminate.</p>
           </div>
 
           <div id="resultContent" hidden>
-            <p class="card-label">Baseline assessment</p>
+            <p id="resultModelLabel" class="card-label">Evidence assessment</p>
             <div class="result-title-row">
               <div>
                 <h3 id="resultClass">Indeterminate</h3>
                 <p id="resultDescriptor"></p>
               </div>
               <div class="score-badge">
-                <strong id="resultScore">0%</strong>
-                <span>relative score</span>
+                <strong id="resultScore">Low</strong>
+                <span id="resultScoreLabel">evidence level</span>
               </div>
             </div>
 
@@ -137,7 +137,7 @@
             <div class="limitation-box">
               <h4>Important limitation</h4>
               <p>
-                This baseline compares overall visual similarity. It does not inspect hidden circuitry, verify a processor, or prove the device's internal architecture. The displayed scores are not calibrated probabilities.
+                These are independent visual evidence ratios against opposing prompt groups, not calibrated probabilities. The model cannot inspect hidden circuitry, verify firmware, or prove internal architecture from one exterior photograph.
               </p>
             </div>
           </div>
@@ -156,30 +156,30 @@
           <p class="eyebrow">Research method</p>
           <h2>Evidence before conclusion</h2>
           <p>
-            The goal is not to force every object into a binary answer. The project is designed to measure what can be inferred from visible evidence, identify shortcuts, and return uncertainty when the photograph does not support a reliable conclusion.
+            The design separates observation from classification. It first asks whether a device is visible, then measures architecture attributes independently, and only then applies transparent derivation rules.
           </p>
         </div>
 
         <div class="method-grid">
           <article>
             <span class="method-number">01</span>
-            <h3>Define the labels</h3>
-            <p>Use consistent definitions for analog, digital, software-controlled, hybrid, and indeterminate devices.</p>
+            <h3>Gate the input</h3>
+            <p>Reject images that do not clearly show a physical device instead of assigning architecture scores to arbitrary objects.</p>
           </article>
           <article>
             <span class="method-number">02</span>
-            <h3>Build the dataset</h3>
-            <p>Collect several views of verified devices, record source and model information, and include difficult counterexamples.</p>
+            <h3>Measure attributes</h3>
+            <p>Score mechanical, analog, digital, and software-control evidence independently against opposing descriptions.</p>
           </article>
           <article>
             <span class="method-number">03</span>
-            <h3>Prevent leakage</h3>
-            <p>Keep every image of the same physical device or product model inside a single train, validation, or test split.</p>
+            <h3>Derive the label</h3>
+            <p>Use explicit rules to derive Analog / Mechanical, Digital / Electronic, Software Controlled, Hybrid, or Indeterminate.</p>
           </article>
           <article>
             <span class="method-number">04</span>
-            <h3>Test generalization</h3>
-            <p>Evaluate unseen models, held-out device families, unusual angles, blur, glare, clutter, and ambiguous hybrid examples.</p>
+            <h3>Evaluate failures</h3>
+            <p>Measure the device gate, each attribute, the final label, abstention behavior, and difficult held-out device families separately.</p>
           </article>
         </div>
       </div>
@@ -193,29 +193,29 @@
 
       <div class="status-grid">
         <article class="status-card complete">
-          <span>Available now</span>
-          <h3>Zero-shot baseline</h3>
-          <p>A browser-based CLIP model compares one image against the four substantive architecture classes and applies a transparent uncertainty rule.</p>
+          <span>Implemented</span>
+          <h3>Independent evidence baseline</h3>
+          <p>The browser model includes a physical-device gate, four separate evidence axes, transparent thresholds, and a rule-derived result.</p>
         </article>
         <article class="status-card active">
-          <span>In progress</span>
-          <h3>Verified benchmark</h3>
-          <p>A small initial image set will be labeled by device identity and architecture, with model-level test separation.</p>
+          <span>Next validation</span>
+          <h3>Attribute benchmark</h3>
+          <p>The dataset must be relabeled for independent mechanical, analog, digital, and software attributes, including non-device negatives.</p>
         </article>
         <article class="status-card planned">
-          <span>Planned</span>
-          <h3>Measured results</h3>
-          <p>Confusion matrices, per-class precision and recall, calibration analysis, examples, and failure cases will be published here.</p>
+          <span>Promotion target</span>
+          <h3>Trained multi-label model</h3>
+          <p>A future supervised model will predict each attribute separately and will replace the baseline only after passing held-out quality gates.</p>
         </article>
       </div>
 
       <div class="research-note">
         <div>
-          <p class="card-label">Why an “indeterminate” result matters</p>
-          <h3>Missing evidence is not a modeling failure.</h3>
+          <p class="card-label">Why independent scores matter</p>
+          <h3>Absence should be allowed to look like absence.</h3>
         </div>
         <p>
-          An exterior image may not reveal firmware, internal signal paths, microcontrollers, or analog circuitry. A useful model must be allowed to say that another view, a model number, or documentation is required.
+          A smartphone can have high digital and software evidence while mechanical evidence remains low. A stereo can show both digital and mechanical evidence. The scores no longer compete for a forced 100% total.
         </p>
       </div>
     </section>
