@@ -1,29 +1,39 @@
 const CLASS_INFO = {
   analog_mechanical: {
     name: "Analog / Mechanical",
-    descriptor: "Visible cues most closely match direct mechanical action or continuous analog operation.",
-    explanation: "The image is visually closer to devices characterized by mechanical movement, direct physical controls, analog gauges, or continuous mechanisms. A rear, label, or interior view may still reveal electronic control that is not visible here.",
+    descriptor: "Mechanical or continuously analog evidence is present without clear digital or software-control evidence.",
+    explanation: "The model found visible support for meaningful physical mechanisms, analog indication, or continuous controls. It did not find enough digital or software evidence to derive a more electronic category.",
   },
   digital_electronic: {
     name: "Digital / Electronic",
-    descriptor: "Visible cues most closely match electronic control, digital media, or digital interfaces.",
-    explanation: "The image is visually closer to devices that use digital logic, electronic controls, digital displays, or digital media. This does not prove the exact circuitry or rule out analog components.",
+    descriptor: "Digital electronic evidence is present without strong mechanical, analog, or software-control evidence.",
+    explanation: "The model found visible support for digital displays, digital media, discrete electronic controls, or digital information processing. This does not prove the exact internal circuitry.",
   },
   software_controlled: {
     name: "Software Controlled",
-    descriptor: "Visible cues most closely match programmable, connected, or embedded-computing behavior.",
-    explanation: "The image is visually closer to devices associated with firmware, programmable menus, networking, application control, or embedded computing. Software cannot be directly observed from an exterior image, so this remains an inference.",
+    descriptor: "Programmable or software-oriented evidence is present without strong mechanical or analog evidence.",
+    explanation: "The model found visible support for menus, applications, networking, embedded computing, or configurable behavior. Software cannot be directly observed from one exterior image, so this remains an inference.",
   },
   hybrid: {
     name: "Hybrid",
-    descriptor: "The image appears to combine meaningful mechanical or analog features with electronic or software control.",
-    explanation: "The visible design appears to mix physical or analog mechanisms with digital electronics or software-oriented controls. Hybrid is often the most honest category for modern appliances and audio equipment.",
+    descriptor: "Meaningful physical or analog evidence and digital or software evidence are both present.",
+    explanation: "The final label is derived from independent evidence axes. The image appears to combine a meaningful mechanism or analog subsystem with digital electronics or software-oriented control.",
+  },
+  indeterminate: {
+    name: "Indeterminate",
+    descriptor: "The image does not provide enough clear, internally consistent architecture evidence for a derived label.",
+    explanation: "The system is designed to abstain when the physical-device gate fails, architecture evidence is weak, or several axes remain borderline. Another angle, the control panel, rear ports, an interior view, or a model number may be needed.",
   },
 };
 
+const ATTRIBUTE_INFO = {
+  mechanical: "Mechanical evidence",
+  analog: "Analog evidence",
+  digital: "Digital evidence",
+  software: "Software-control evidence",
+};
+
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
-const UNCERTAINTY_TOP_SCORE = 0.34;
-const UNCERTAINTY_MARGIN = 0.055;
 
 const imageInput = document.getElementById("imageInput");
 const dropZone = document.getElementById("dropZone");
@@ -42,6 +52,7 @@ const errorMessage = document.getElementById("errorMessage");
 const resultClass = document.getElementById("resultClass");
 const resultDescriptor = document.getElementById("resultDescriptor");
 const resultScore = document.getElementById("resultScore");
+const resultScoreLabel = document.getElementById("resultScoreLabel") || document.querySelector(".score-badge span");
 const scoreList = document.getElementById("scoreList");
 const resultExplanation = document.getElementById("resultExplanation");
 const resultModelLabel = document.getElementById("resultModelLabel");
@@ -171,65 +182,88 @@ function analyzeImage() {
   ensureWorker().postMessage({ type: "analyze", image: selectedDataUrl });
 }
 
-function renderResult(payload) {
-  const rawResults = Array.isArray(payload) ? payload : payload?.results;
-  const model = Array.isArray(payload) ? null : payload?.model;
-  const results = Array.isArray(rawResults)
-    ? rawResults
-        .filter((item) => item && CLASS_INFO[item.label] && Number.isFinite(Number(item.score)))
-        .map((item) => ({ ...item, score: Number(item.score) }))
-        .sort((a, b) => b.score - a.score)
+function interpretationFor(payload, info) {
+  const reason = payload?.assessment?.reason;
+  const deviceScore = Number(payload?.deviceGate?.score);
+  const active = Array.isArray(payload?.assessment?.activeAttributes)
+    ? payload.assessment.activeAttributes.map((id) => ATTRIBUTE_INFO[id] ?? id)
     : [];
 
-  if (!results.length) {
-    showError("The model returned no usable classification scores.");
+  if (reason === "device-gate") {
+    return `The image scored ${Math.round(deviceScore * 100)}% on the physical-device gate, below the required threshold. The model therefore did not force architecture labels onto an image that may not clearly show a device.`;
+  }
+  if (reason === "insufficient-architecture-evidence") {
+    return "The image appears to show a physical device, but none of the four architecture axes produced enough evidence for a reliable derived label. A closer view of controls, displays, ports, moving parts, or labels may help.";
+  }
+  if (reason === "borderline-or-conflicting-evidence") {
+    return "Some architecture evidence was present, but it stayed near the decision thresholds or produced a combination that the current rule set cannot resolve safely. The system returned Indeterminate instead of forcing a class.";
+  }
+
+  const evidenceSummary = active.length
+    ? ` Evidence above the decision threshold: ${active.join(", ")}.`
+    : "";
+  return `${info.explanation}${evidenceSummary}`;
+}
+
+function addScoreRow(nameText, score, note = "") {
+  const row = document.createElement("div");
+  row.className = "score-row";
+
+  const name = document.createElement("strong");
+  name.textContent = note ? `${nameText} · ${note}` : nameText;
+
+  const track = document.createElement("div");
+  track.className = "score-track";
+  const fill = document.createElement("div");
+  fill.className = "score-fill";
+  fill.style.width = `${Math.max(2, Math.min(100, score * 100))}%`;
+  track.appendChild(fill);
+
+  const value = document.createElement("span");
+  value.textContent = `${Math.round(score * 100)}%`;
+
+  row.append(name, track, value);
+  scoreList.appendChild(row);
+}
+
+function renderResult(payload) {
+  const assessment = payload?.assessment;
+  const attributes = Array.isArray(payload?.attributes) ? payload.attributes : [];
+  const model = payload?.model;
+  const info = CLASS_INFO[assessment?.label];
+
+  if (!assessment || !info || attributes.length !== 4) {
+    showError("The model returned an incomplete evidence assessment.");
     return;
   }
 
-  const top = results[0];
-  const second = results[1] ?? { score: 0 };
-  const margin = top.score - second.score;
-  const uncertain = top.score < UNCERTAINTY_TOP_SCORE || margin < UNCERTAINTY_MARGIN;
-  const info = CLASS_INFO[top.label];
-
   if (resultModelLabel) {
     resultModelLabel.textContent = model?.version
-      ? `Model result · ${model.version}`
-      : "Model result";
+      ? `Evidence assessment · ${model.version}`
+      : "Evidence assessment";
   }
 
-  if (uncertain) {
-    resultClass.textContent = "Indeterminate";
-    resultDescriptor.textContent = "The baseline did not find a sufficiently clear separation between the leading visual interpretations.";
-    resultScore.textContent = `${Math.round(top.score * 100)}%`;
-    resultExplanation.textContent = `The strongest visual match was ${info.name.toLowerCase()}, but the score and separation were not strong enough for this research baseline to present it as the final class. Try a closer image of the controls, display, rear ports, rating label, or operating interface.`;
-  } else {
-    resultClass.textContent = info.name;
-    resultDescriptor.textContent = info.descriptor;
-    resultScore.textContent = `${Math.round(top.score * 100)}%`;
-    resultExplanation.textContent = info.explanation;
-  }
+  resultClass.textContent = info.name;
+  resultDescriptor.textContent = info.descriptor;
+  resultScore.textContent = assessment.evidenceLevel || "Low";
+  if (resultScoreLabel) resultScoreLabel.textContent = "evidence level";
+  resultExplanation.textContent = interpretationFor(payload, info);
 
   scoreList.innerHTML = "";
-  for (const result of results) {
-    const row = document.createElement("div");
-    row.className = "score-row";
+  addScoreRow(
+    "Physical device gate",
+    Number(payload?.deviceGate?.score) || 0,
+    payload?.deviceGate?.passed ? "passed" : "not passed",
+  );
 
-    const name = document.createElement("strong");
-    name.textContent = CLASS_INFO[result.label].name;
-
-    const track = document.createElement("div");
-    track.className = "score-track";
-    const fill = document.createElement("div");
-    fill.className = "score-fill";
-    fill.style.width = `${Math.max(2, result.score * 100)}%`;
-    track.appendChild(fill);
-
-    const value = document.createElement("span");
-    value.textContent = `${Math.round(result.score * 100)}%`;
-
-    row.append(name, track, value);
-    scoreList.appendChild(row);
+  for (const attribute of attributes) {
+    if (!ATTRIBUTE_INFO[attribute?.id] || !Number.isFinite(Number(attribute?.score))) continue;
+    const threshold = Number(payload?.thresholds?.attributePresent) || 0.60;
+    addScoreRow(
+      ATTRIBUTE_INFO[attribute.id],
+      Number(attribute.score),
+      Number(attribute.score) >= threshold ? "present" : "below threshold",
+    );
   }
 
   resultEmpty.hidden = true;

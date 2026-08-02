@@ -1,201 +1,229 @@
-import {
-  AutoProcessor,
-  CLIPVisionModelWithProjection,
-  RawImage,
-  env,
-  pipeline,
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+import { env, pipeline } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
 
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-const BASE_MODEL_ID = "Xenova/clip-vit-base-patch32";
-const FALLBACK_VERSION = "zero-shot-ensemble-v0.2";
-const CLASSIFIER_URL = new URL("./models/classifier.json", self.location.href);
-const MIN_PROMOTION_ACCURACY = 0.55;
-const MIN_PROMOTION_MACRO_F1 = 0.50;
+const MODEL_ID = "Xenova/clip-vit-base-patch32";
+const MODEL_VERSION = "independent-attribute-baseline-v0.3";
 
-const CLASS_PROMPTS = {
-  analog_mechanical: [
-    "a mechanical device with gears, springs, levers, valves, or direct physical controls",
-    "an analog instrument with a dial, needle, gauge, or continuous control",
-    "a traditional non-computerized device operated by physical mechanisms",
-    "a manually controlled machine without a digital display or software interface",
-  ],
-  digital_electronic: [
-    "an electronic device with a digital display, keypad, LEDs, or digital logic",
-    "consumer electronics using digital media or electronic controls",
-    "a digital instrument with a screen, numeric readout, or electronic interface",
-    "an electronically controlled device without obvious networking or application control",
-  ],
-  software_controlled: [
-    "a smart connected device controlled by software, firmware, or a mobile application",
-    "a programmable device with menus, a touchscreen, networking, or embedded computing",
-    "an internet-connected appliance or embedded computer system",
-    "a device whose behavior is configured through software settings or applications",
-  ],
-  hybrid: [
-    "a machine combining mechanical moving parts with digital electronic control",
-    "an appliance with physical mechanisms and programmable electronic controls",
-    "a device with analog or mechanical functions and a digital user interface",
-    "a mixed-architecture system such as a modern stereo, washer, or vehicle subsystem",
-  ],
+const THRESHOLDS = {
+  device: 0.56,
+  attributePresent: 0.60,
+  minimumArchitectureEvidence: 0.55,
+  highEvidence: 0.72,
+  moderateEvidence: 0.62,
 };
 
-const PROMPT_ENTRIES = Object.entries(CLASS_PROMPTS).flatMap(([classId, prompts]) =>
-  prompts.map((prompt) => ({ classId, prompt })),
-);
-const PROMPTS = PROMPT_ENTRIES.map(({ prompt }) => prompt);
-const PROMPT_CLASS = new Map(PROMPT_ENTRIES.map(({ classId, prompt }) => [prompt, classId]));
+const PROMPT_GROUPS = {
+  device: {
+    name: "Physical device",
+    positive: [
+      "a photograph of a physical device, machine, appliance, instrument, or electronic product",
+      "a manufactured functional object with controls, ports, moving parts, a display, or operating components",
+      "a clearly visible tool, machine, consumer electronic device, or household appliance",
+    ],
+    negative: [
+      "a person, animal, plant, landscape, food item, or natural scene",
+      "clothing, furniture, decoration, artwork, packaging, text, or a document rather than a functional device",
+      "an abstract, blurry, cropped, or unidentifiable image without a clear physical device",
+    ],
+  },
+  mechanical: {
+    name: "Mechanical evidence",
+    positive: [
+      "a device whose operation depends on gears, springs, levers, valves, linkages, motors, or moving mechanisms",
+      "a machine with a meaningful physical mechanism, moving media, rotating parts, a transport system, or direct mechanical action",
+      "a device with mechanical controls or moving components essential to its main function",
+    ],
+    negative: [
+      "a solid-state object with no meaningful moving mechanism or mechanical operation",
+      "a device whose visible function is primarily electronic with no important moving parts",
+      "a simple fixed enclosure or screen without visible mechanical action",
+    ],
+  },
+  analog: {
+    name: "Analog evidence",
+    positive: [
+      "an analog device using a needle, dial, gauge, continuous knob, physical scale, or continuously varying signal",
+      "a device with analog controls, analog measurement, analog audio circuitry, or continuous physical indication",
+      "a traditional instrument whose state is represented continuously rather than as discrete digital values",
+    ],
+    negative: [
+      "a fully digital interface using discrete numbers, icons, menus, or binary electronic states",
+      "a device with no visible analog gauge, continuous scale, analog signal control, or analog indication",
+      "a purely digital electronic product rather than an analog instrument",
+    ],
+  },
+  digital: {
+    name: "Digital evidence",
+    positive: [
+      "a digital electronic device with an LCD, LED display, keypad, digital media, logic circuitry, or electronic controls",
+      "a device that processes information in discrete digital form",
+      "consumer electronics with a numeric display, digital buttons, digital storage, or digital signal processing",
+    ],
+    negative: [
+      "a non-electronic manual mechanism with no digital display, digital media, or digital controls",
+      "a purely mechanical or continuously analog instrument rather than a digital electronic device",
+      "a traditional device that operates without digital logic or discrete electronic information processing",
+    ],
+  },
+  software: {
+    name: "Software-control evidence",
+    positive: [
+      "a programmable device controlled by software, firmware, menus, applications, networking, or an embedded computer",
+      "a smart or connected device whose behavior can be configured through software",
+      "a device with a touchscreen, operating system, app control, network connection, or programmable interface",
+    ],
+    negative: [
+      "a fixed-function device with no visible programmable interface, software settings, networking, or application control",
+      "a simple manual or electronic product that does not appear configurable by software",
+      "a device whose behavior is determined by direct controls rather than programs, menus, firmware settings, or apps",
+    ],
+  },
+};
 
-let classifierArtifactPromise;
-let visionRuntimePromise;
-let zeroShotPromise;
+const PROMPT_ENTRIES = Object.entries(PROMPT_GROUPS).flatMap(([attribute, group]) => [
+  ...group.positive.map((prompt) => ({ attribute, polarity: "positive", prompt })),
+  ...group.negative.map((prompt) => ({ attribute, polarity: "negative", prompt })),
+]);
+const PROMPTS = PROMPT_ENTRIES.map(({ prompt }) => prompt);
+const PROMPT_LOOKUP = new Map(PROMPT_ENTRIES.map((entry) => [entry.prompt, entry]));
+
+let classifierPromise;
 
 function progressCallback(progress) {
   self.postMessage({ type: "progress", payload: progress });
 }
 
-function isPromotedArtifact(artifact) {
-  return Number(artifact?.metrics?.test_accuracy) >= MIN_PROMOTION_ACCURACY
-    && Number(artifact?.metrics?.test_macro_f1) >= MIN_PROMOTION_MACRO_F1;
-}
-
-async function loadClassifierArtifact() {
-  if (!classifierArtifactPromise) {
-    classifierArtifactPromise = fetch(CLASSIFIER_URL, { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const artifact = await response.json();
-        const valid = artifact?.schema_version === 1
-          && artifact?.base_model === BASE_MODEL_ID
-          && artifact?.embedding_dimensions === 512
-          && Array.isArray(artifact?.labels)
-          && artifact.labels.length === 4
-          && Array.isArray(artifact?.weights)
-          && artifact.weights.length === 4;
-        return valid ? artifact : null;
-      })
-      .catch(() => null);
-  }
-  return classifierArtifactPromise;
-}
-
-async function getVisionRuntime() {
-  if (!visionRuntimePromise) {
-    visionRuntimePromise = Promise.all([
-      AutoProcessor.from_pretrained(BASE_MODEL_ID, { progress_callback: progressCallback }),
-      CLIPVisionModelWithProjection.from_pretrained(BASE_MODEL_ID, {
-        dtype: "q8",
-        progress_callback: progressCallback,
-      }),
-    ]).then(([processor, model]) => ({ processor, model }));
-  }
-  return visionRuntimePromise;
-}
-
-function getZeroShotClassifier() {
-  if (!zeroShotPromise) {
-    zeroShotPromise = pipeline("zero-shot-image-classification", BASE_MODEL_ID, {
+function getClassifier() {
+  if (!classifierPromise) {
+    classifierPromise = pipeline("zero-shot-image-classification", MODEL_ID, {
       dtype: "q8",
       progress_callback: progressCallback,
     });
   }
-  return zeroShotPromise;
+  return classifierPromise;
 }
 
-function l2Normalize(values) {
-  const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0)) || 1;
-  return values.map((value) => value / norm);
-}
-
-function softmax(logits) {
-  const max = Math.max(...logits);
-  const exponents = logits.map((value) => Math.exp(value - max));
-  const total = exponents.reduce((sum, value) => sum + value, 0);
-  return exponents.map((value) => value / total);
-}
-
-async function dataUrlToRawImage(dataUrl) {
-  const response = await fetch(dataUrl);
-  if (!response.ok) throw new Error("The selected image could not be decoded.");
-  return RawImage.fromBlob(await response.blob());
-}
-
-async function classifyWithTrainedHead(image, artifact) {
-  self.postMessage({ type: "status", payload: "Loading trained CLIP encoder..." });
-  const { processor, model } = await getVisionRuntime();
-  const rawImage = await dataUrlToRawImage(image);
-  const inputs = await processor(rawImage);
-  self.postMessage({ type: "status", payload: "Applying trained architecture classifier..." });
-  const output = await model(inputs);
-  const embedding = l2Normalize(Array.from(output.image_embeds.data));
-  const logits = artifact.weights.map((row, classIndex) =>
-    row.reduce((sum, weight, index) => sum + weight * embedding[index], Number(artifact.bias?.[classIndex] ?? 0)),
+function aggregateIndependentEvidence(rawOutput) {
+  const totals = Object.fromEntries(
+    Object.keys(PROMPT_GROUPS).map((attribute) => [attribute, { positive: 0, negative: 0 }]),
   );
-  const probabilities = softmax(logits);
-  const results = artifact.labels
-    .map((label, index) => ({ label, score: probabilities[index] }))
-    .sort((a, b) => b.score - a.score);
 
-  return {
-    results,
-    model: {
-      id: artifact.base_model,
-      version: artifact.model_version,
-      method: "Frozen CLIP encoder with trained logistic-regression head",
-      thresholds: artifact.thresholds,
-      metrics: artifact.metrics,
-      dataset: artifact.dataset_version,
-      warning: artifact.warning,
-      promoted: true,
-    },
-  };
-}
-
-function aggregatePromptScores(rawOutput) {
-  const totals = Object.fromEntries(Object.keys(CLASS_PROMPTS).map((classId) => [classId, 0]));
   for (const item of rawOutput ?? []) {
-    const classId = PROMPT_CLASS.get(item?.label);
+    const entry = PROMPT_LOOKUP.get(item?.label);
     const score = Number(item?.score);
-    if (classId && Number.isFinite(score)) totals[classId] += score;
+    if (!entry || !Number.isFinite(score)) continue;
+    totals[entry.attribute][entry.polarity] += score;
   }
-  const totalScore = Object.values(totals).reduce((sum, value) => sum + value, 0);
-  if (!(totalScore > 0)) return [];
-  return Object.entries(totals)
-    .map(([label, score]) => ({ label, score: score / totalScore }))
-    .sort((a, b) => b.score - a.score);
+
+  return Object.entries(totals).map(([id, values]) => {
+    const denominator = values.positive + values.negative;
+    const score = denominator > 0 ? values.positive / denominator : 0.5;
+    return {
+      id,
+      name: PROMPT_GROUPS[id].name,
+      score,
+      positiveEvidence: values.positive,
+      negativeEvidence: values.negative,
+    };
+  });
 }
 
-async function classifyWithZeroShot(image, candidateArtifact = null) {
-  self.postMessage({ type: "status", payload: "Loading CLIP zero-shot baseline..." });
-  const classifier = await getZeroShotClassifier();
-  self.postMessage({ type: "status", payload: "Comparing architecture evidence..." });
-  const rawOutput = await classifier(image, PROMPTS, {
-    hypothesis_template: "This is a photograph of {}.",
-  });
-  const results = aggregatePromptScores(rawOutput);
-  if (!results.length) throw new Error("The model returned no usable class scores.");
+function evidenceLevel(score) {
+  if (score >= THRESHOLDS.highEvidence) return "High";
+  if (score >= THRESHOLDS.moderateEvidence) return "Moderate";
+  return "Low";
+}
+
+function deriveAssessment(attributes) {
+  const scores = Object.fromEntries(attributes.map(({ id, score }) => [id, score]));
+  const devicePassed = scores.device >= THRESHOLDS.device;
+  const architecture = {
+    mechanical: scores.mechanical,
+    analog: scores.analog,
+    digital: scores.digital,
+    software: scores.software,
+  };
+  const strongestArchitecture = Math.max(...Object.values(architecture));
+  const physicalEvidence = Math.max(architecture.mechanical, architecture.analog);
+  const electronicEvidence = Math.max(architecture.digital, architecture.software);
+  const mechanicalPresent = architecture.mechanical >= THRESHOLDS.attributePresent;
+  const analogPresent = architecture.analog >= THRESHOLDS.attributePresent;
+  const digitalPresent = architecture.digital >= THRESHOLDS.attributePresent;
+  const softwarePresent = architecture.software >= THRESHOLDS.attributePresent;
+
+  if (!devicePassed) {
+    return {
+      label: "indeterminate",
+      reason: "device-gate",
+      evidenceScore: scores.device,
+      evidenceLevel: evidenceLevel(scores.device),
+      activeAttributes: [],
+    };
+  }
+
+  if (strongestArchitecture < THRESHOLDS.minimumArchitectureEvidence) {
+    return {
+      label: "indeterminate",
+      reason: "insufficient-architecture-evidence",
+      evidenceScore: strongestArchitecture,
+      evidenceLevel: evidenceLevel(strongestArchitecture),
+      activeAttributes: [],
+    };
+  }
+
+  const activeAttributes = Object.entries(architecture)
+    .filter(([, score]) => score >= THRESHOLDS.attributePresent)
+    .map(([id]) => id);
+
+  const hybridEvidence = Math.min(physicalEvidence, electronicEvidence);
+  if ((mechanicalPresent || analogPresent) && (digitalPresent || softwarePresent)) {
+    return {
+      label: "hybrid",
+      reason: "physical-and-electronic-evidence",
+      evidenceScore: hybridEvidence,
+      evidenceLevel: evidenceLevel(hybridEvidence),
+      activeAttributes,
+    };
+  }
+
+  if (softwarePresent && !mechanicalPresent && !analogPresent) {
+    return {
+      label: "software_controlled",
+      reason: "software-dominant",
+      evidenceScore: architecture.software,
+      evidenceLevel: evidenceLevel(architecture.software),
+      activeAttributes,
+    };
+  }
+
+  if (digitalPresent && !mechanicalPresent && !analogPresent) {
+    return {
+      label: "digital_electronic",
+      reason: "digital-dominant",
+      evidenceScore: architecture.digital,
+      evidenceLevel: evidenceLevel(architecture.digital),
+      activeAttributes,
+    };
+  }
+
+  if ((mechanicalPresent || analogPresent) && !digitalPresent && !softwarePresent) {
+    return {
+      label: "analog_mechanical",
+      reason: "physical-or-analog-dominant",
+      evidenceScore: physicalEvidence,
+      evidenceLevel: evidenceLevel(physicalEvidence),
+      activeAttributes,
+    };
+  }
+
   return {
-    results,
-    model: {
-      id: BASE_MODEL_ID,
-      version: FALLBACK_VERSION,
-      method: "CLIP zero-shot prompt ensemble",
-      promptsPerClass: 4,
-      promoted: false,
-      evaluatedCandidate: candidateArtifact
-        ? {
-            version: candidateArtifact.model_version,
-            metrics: candidateArtifact.metrics,
-            promotionRequirements: {
-              test_accuracy: MIN_PROMOTION_ACCURACY,
-              test_macro_f1: MIN_PROMOTION_MACRO_F1,
-            },
-            status: "not-promoted",
-          }
-        : null,
-    },
+    label: "indeterminate",
+    reason: "borderline-or-conflicting-evidence",
+    evidenceScore: strongestArchitecture,
+    evidenceLevel: evidenceLevel(strongestArchitecture),
+    activeAttributes,
   };
 }
 
@@ -204,11 +232,37 @@ self.addEventListener("message", async (event) => {
   if (type !== "analyze" || !image) return;
 
   try {
-    const artifact = await loadClassifierArtifact();
-    const payload = artifact && isPromotedArtifact(artifact)
-      ? await classifyWithTrainedHead(image, artifact)
-      : await classifyWithZeroShot(image, artifact);
-    self.postMessage({ type: "result", payload });
+    self.postMessage({ type: "status", payload: "Loading CLIP evidence model..." });
+    const classifier = await getClassifier();
+    self.postMessage({ type: "status", payload: "Testing device and architecture evidence independently..." });
+
+    const rawOutput = await classifier(image, PROMPTS, {
+      hypothesis_template: "This image shows {}.",
+    });
+    const attributes = aggregateIndependentEvidence(rawOutput);
+    const assessment = deriveAssessment(attributes);
+    const deviceAttribute = attributes.find(({ id }) => id === "device");
+
+    self.postMessage({
+      type: "result",
+      payload: {
+        assessment,
+        deviceGate: {
+          score: deviceAttribute?.score ?? 0.5,
+          threshold: THRESHOLDS.device,
+          passed: (deviceAttribute?.score ?? 0.5) >= THRESHOLDS.device,
+        },
+        attributes: attributes.filter(({ id }) => id !== "device"),
+        thresholds: THRESHOLDS,
+        model: {
+          id: MODEL_ID,
+          version: MODEL_VERSION,
+          method: "Independent positive-versus-negative CLIP evidence axes with a device gate and rule-derived label",
+          scoresAreIndependent: true,
+          scoresSumToOne: false,
+        },
+      },
+    });
   } catch (error) {
     self.postMessage({
       type: "error",

@@ -1,0 +1,58 @@
+name: Validate browser evidence model
+
+on:
+  pull_request:
+    paths:
+      - "app.js"
+      - "model-worker.js"
+      - "index.html"
+      - "styles.css"
+      - ".github/workflows/validate-browser-model.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app.js"
+      - "model-worker.js"
+      - "index.html"
+      - "styles.css"
+      - ".github/workflows/validate-browser-model.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check model-worker.js
+
+      - name: Parse HTML
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          parser = HTMLParser()
+          parser.feed(Path('index.html').read_text(encoding='utf-8'))
+          print('index.html parsed successfully')
+          PY
+
+      - name: Smoke-test static site
+        run: |
+          python -m http.server 8000 >/tmp/device-site.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid' EXIT
+          sleep 2
+          curl --fail --silent http://127.0.0.1:8000/ | grep -q "Device Architecture AI"
+          curl --fail --silent http://127.0.0.1:8000/model-worker.js | grep -q "independent-attribute-baseline-v0.3"

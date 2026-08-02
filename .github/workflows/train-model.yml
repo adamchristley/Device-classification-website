@@ -7,7 +7,6 @@ on:
       - "training/**"
       - "data/dataset_config.json"
       - ".github/workflows/train-model.yml"
-      - "model-worker.js"
   push:
     branches: [main]
     paths:
